@@ -199,6 +199,9 @@ final class DeeplService implements LoggerAwareInterface
         if (($supportedTargetLanguages = $this->cache->get($cacheIdentifier)) === false) {
             $supportedTargetLanguages = $this->loadSupportedLanguagesFromAPI();
 
+            // The API doesn't provide Arabic in the list of supported languages but it is supported
+            $supportedTargetLanguages[] = new Language('Arabic', 'AR', false);
+
             $this->cache->set($cacheIdentifier, $supportedTargetLanguages, [], 86400);
         }
 

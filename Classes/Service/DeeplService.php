@@ -103,6 +103,32 @@ final class DeeplService implements LoggerAwareInterface
             $content = $response->text;
         }
 
+        $content = preg_replace_callback('/(title|alt)="(.*)"/', function($match) use ($translateContext) {
+            $attribute = $match[1];
+            $attributeContent = $match[2];
+            // Decode HTML characters, so DeepL can translate the original text without HTML entities
+            $attributeContent = htmlspecialchars_decode($attributeContent, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5);
+
+            $translationResponse = $this->client->translate(
+                $attributeContent,
+                $translateContext->getSourceLanguageCode(),
+                $translateContext->getTargetLanguageCode(),
+                $translateContext->getGlossaryId(),
+                $translateContext->getFormality(),
+            );
+
+            if (is_array($translationResponse)) {
+                $translatedAttributeContent = '';
+                foreach ($translationResponse as $result) {
+                    $translatedAttributeContent .= $result->text;
+                }
+            } else {
+                $translatedAttributeContent = $translationResponse->text;
+            }
+
+            return sprintf('%s="%s"', $attribute, htmlspecialchars($translatedAttributeContent, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5));
+        }, $content);
+
         return htmlspecialchars_decode($content, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5);
     }
 

@@ -82,7 +82,7 @@ final class DeeplService implements LoggerAwareInterface
             }
         }
 
-        $content = str_replace('</a><a', ' </a> <a', $translateContext->getContent());
+        $content = preg_replace('/<\/a>(\s*)<a/i', '</a>$1<span translate="no" class="deepl-fix-barrier" style="display:inline;">|</span><a', $translateContext->getContent());
 
         try {
             $response = $this->client->translate(
@@ -112,7 +112,9 @@ final class DeeplService implements LoggerAwareInterface
             $content = $response->text;
         }
 
-        $content = preg_replace_callback('/(title|alt)="([^"]*)"/u', function($match) use ($translateContext) {
+        $content = preg_replace('/<span translate="no" class="deepl-fix-barrier"[^>]*>.*?<\/span>/i', '', $content);
+
+        $content = preg_replace_callback('/(title|alt)="([^"]*)"/u', function ($match) use ($translateContext) {
             $attribute = $match[1];
             $attributeContent = $match[2];
             // Decode HTML characters, so DeepL can translate the original text without HTML entities

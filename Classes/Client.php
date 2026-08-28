@@ -37,7 +37,7 @@ final class Client extends AbstractClient
             // @todo Make this configurable, either as global setting or dependency injection (factory?) / event
             TranslateTextOptions::FORMALITY => $formality ?: 'default',
             // @todo Make this configurable, either as global setting or dependency injection (factory?) / event
-            TranslateTextOptions::TAG_HANDLING => 'xml',
+            TranslateTextOptions::TAG_HANDLING => 'html',
             // @todo Make this configurable, either as global setting or dependency injection (factory?) / event
             TranslateTextOptions::TAG_HANDLING_VERSION => 'v2',
         ];

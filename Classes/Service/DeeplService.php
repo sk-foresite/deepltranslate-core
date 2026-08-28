@@ -82,9 +82,11 @@ final class DeeplService implements LoggerAwareInterface
             }
         }
 
+        $content = str_replace('</a><a', ' </a> <a', $translateContext->getContent());
+
         try {
             $response = $this->client->translate(
-                $translateContext->getContent(),
+                $content,
                 $translateContext->getSourceLanguageCode(),
                 $translateContext->getTargetLanguageCode(),
                 $translateContext->getGlossaryId(),
@@ -92,7 +94,7 @@ final class DeeplService implements LoggerAwareInterface
             );
         } catch (ApiKeyNotSetException $exception) {
             // @todo Add proper error logging here.
-            return $translateContext->getContent();
+            return $content;
         }
 
         if ($response === null) {

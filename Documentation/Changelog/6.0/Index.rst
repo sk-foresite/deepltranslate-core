@@ -1,0 +1,61 @@
+:template: changelogOverview.html
+..  _changelog-6-0:
+
+6.0 Changes
+===========
+
+**Table of contents**
+
+..  contents::
+    :local:
+    :depth: 1
+
+Breaking Changes
+^^^^^^^^^^^^^^^^
+
+..  toctree::
+    :maxdepth: 1
+    :titlesonly:
+    :glob:
+
+    Breaking-*
+
+Features
+^^^^^^^^
+
+..  toctree::
+    :maxdepth: 1
+    :titlesonly:
+    :glob:
+
+    Feature-*
+
+Bugfix
+^^^^^^
+
+..  toctree::
+    :maxdepth: 1
+    :titlesonly:
+    :glob:
+
+    Bugfix-*
+
+Deprecation
+^^^^^^^^^^^
+
+..  toctree::
+    :maxdepth: 1
+    :titlesonly:
+    :glob:
+
+    Deprecation-*
+
+Important
+^^^^^^^^^
+
+..  toctree::
+    :maxdepth: 1
+    :titlesonly:
+    :glob:
+
+    Important-*

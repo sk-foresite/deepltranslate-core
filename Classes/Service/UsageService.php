@@ -6,25 +6,24 @@ namespace WebVision\Deepltranslate\Core\Service;
 
 use DeepL\Usage;
 use Symfony\Component\DependencyInjection\Attribute\Autoconfigure;
-use TYPO3\CMS\Backend\Toolbar\Enumeration\InformationStatus;
+use TYPO3\CMS\Backend\Toolbar\InformationStatus;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Localization\Locales;
 use TYPO3\CMS\Core\Type\ContextualFeedbackSeverity;
-use WebVision\Deepltranslate\Core\ClientInterface;
 use WebVision\Deepltranslate\Core\Event\Listener\UsageToolBarEventListener;
 use WebVision\Deepltranslate\Core\Hooks\UsageProcessAfterFinishHook;
+use WebVision\Deepltranslate\Core\UsageInterface;
 
 /**
  * Service for getting the current count and limit of DeepL API
  */
 #[Autoconfigure(public: true)]
-final class UsageService implements UsageServiceInterface
+final readonly class UsageService implements UsageServiceInterface
 {
     public function __construct(
-        private readonly ClientInterface $client,
-        private readonly Locales $locales
-    ) {
-    }
+        private UsageInterface $client,
+        private Locales $locales,
+    ) {}
 
     public function getCurrentUsage(): ?Usage
     {
@@ -91,6 +90,9 @@ final class UsageService implements UsageServiceInterface
      */
     public function determineSeverity(int $characterCount, int $characterLimit): ContextualFeedbackSeverity
     {
+        if ($characterLimit === 0) {
+            return ContextualFeedbackSeverity::NOTICE;
+        }
         $quotaUtilization = ($characterCount / $characterLimit) * 100;
         if ($quotaUtilization >= 100) {
             return ContextualFeedbackSeverity::ERROR;
@@ -109,19 +111,22 @@ final class UsageService implements UsageServiceInterface
      *
      * @internal to be used only within `web-vision/deepltranslate-core`, not part of public API.
      */
-    public function determineSeverityForSystemInformation(int $characterCount, int $characterLimit): string
+    public function determineSeverityForSystemInformation(int $characterCount, int $characterLimit): InformationStatus
     {
+        if ($characterLimit === 0) {
+            return InformationStatus::NOTICE;
+        }
         $quotaUtilization = ($characterCount / $characterLimit) * 100;
         if ($quotaUtilization >= 100) {
-            return InformationStatus::STATUS_ERROR;
+            return InformationStatus::ERROR;
         }
         if ($quotaUtilization >= 98) {
-            return InformationStatus::STATUS_WARNING;
+            return InformationStatus::WARNING;
         }
         if ($quotaUtilization >= 90) {
-            return InformationStatus::STATUS_INFO;
+            return InformationStatus::INFO;
         }
-        return InformationStatus::STATUS_NOTICE;
+        return InformationStatus::NOTICE;
     }
 
     private function getBackendUser(): ?BackendUserAuthentication

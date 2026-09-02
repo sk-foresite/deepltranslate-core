@@ -1,0 +1,70 @@
+<?php
+
+declare(strict_types=1);
+
+namespace WebVision\Deepltranslate\Core\Core13\EventListener;
+
+use TYPO3\CMS\Core\Attribute\AsEventListener;
+use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
+use WebVision\Deepl\Base\Core13\Controller\Backend\LocalizationController;
+use WebVision\Deepl\Base\Event\GetLocalizationModesEvent;
+use WebVision\Deepl\Base\Localization\LocalizationMode;
+use WebVision\Deepltranslate\Core\Access\AllowedTranslateAccess;
+
+/**
+ * Provides deepltranslate related localization modes by listening to the PSR-14
+ * event {@see GetLocalizationModesEvent} dispatched by extension `deepl_base`
+ * in {@see LocalizationController::dispatchGetLocalizationModesEvent()}.
+ *
+ * @depreacted used only for TYPO3 v13 compatibility and will not be dispatched for TYPO3 v14
+ *             and should be resort to TYPO3 v14 localization handler feature provided by the
+ *             TYPO3 Core.
+ */
+final class ApplyLocalizationModesEventListener
+{
+    #[AsEventListener(
+        identifier: 'deepltranslate-core/deepltranslate-core-localization-modes-determine',
+        after: 'deepl-base/determine-default-typo3-localization-modes',
+    )]
+    public function __invoke(GetLocalizationModesEvent $event): void
+    {
+        if (!$this->deeplTranslateAllowed()) {
+            // Non-admin user does not have the permission for deepl, return early.
+            return;
+        }
+        $modes = [];
+        if ($this->allowDeeplTranslate($event)) {
+            $modes[] = new LocalizationMode(
+                identifier: 'deepltranslate',
+                title: $event->getLanguageService()->sL('LLL:EXT:deepltranslate_core/Resources/Private/Language/locallang.xlf:localize.educate.deepltranslateHeader'),
+                description: $event->getLanguageService()->sL('LLL:EXT:deepltranslate_core/Resources/Private/Language/locallang.xlf:localize.educate.deepltranslate'),
+                icon: 'actions-localize-deepl-13',
+                before: [],
+                after: [LocalizationController::ACTION_LOCALIZE, LocalizationController::ACTION_COPY],
+            );
+        }
+        if ($modes !== []) {
+            $event->getModes()->add(...$modes);
+        }
+    }
+
+    private function allowDeeplTranslate(GetLocalizationModesEvent $event): bool
+    {
+        // @todo Prepared for PageTSConfig feature to toggle `deepltranslate`.
+        return true;
+    }
+
+    private function deeplTranslateAllowed(): bool
+    {
+        $user = $this->getBackendUser();
+        if ($user !== null) {
+            return $user->isAdmin() || $user->check('custom_options', AllowedTranslateAccess::ALLOWED_TRANSLATE_OPTION_VALUE);
+        }
+        return false;
+    }
+
+    private function getBackendUser(): ?BackendUserAuthentication
+    {
+        return $GLOBALS['BE_USER'] ?? null;
+    }
+}

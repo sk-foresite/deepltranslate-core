@@ -13,16 +13,6 @@ use WebVision\Deepltranslate\Core\Tests\Functional\AbstractDeepLTestCase;
 #[CoversClass(HasFormalitySupport::class)]
 class HasFormalitySupportTest extends AbstractDeepLTestCase
 {
-    protected function setUp(): void
-    {
-        $this->configurationToUseInTestInstance = array_merge(
-            $this->configurationToUseInTestInstance,
-            require __DIR__ . '/../../Fixtures/ExtensionConfig.php'
-        );
-
-        parent::setUp();
-    }
-
     #[Test]
     public function hasFormalitySupportIsSupported(): void
     {
@@ -38,7 +28,7 @@ class HasFormalitySupportTest extends AbstractDeepLTestCase
             ],
         ], $evaluateDisplayConditionsMock);
 
-        static::assertTrue($isFormalitySupported);
+        $this->assertTrue($isFormalitySupported);
     }
 
     #[Test]
@@ -56,7 +46,7 @@ class HasFormalitySupportTest extends AbstractDeepLTestCase
             ],
         ], $evaluateDisplayConditionsMock);
 
-        static::assertFalse($isFormalitySupported);
+        $this->assertFalse($isFormalitySupported);
     }
 
     #[Test]
@@ -68,7 +58,7 @@ class HasFormalitySupportTest extends AbstractDeepLTestCase
 
         $isFormalitySupported = $subject->checkFormalitySupport([], $evaluateDisplayConditionsMock);
 
-        static::assertFalse($isFormalitySupported);
+        $this->assertFalse($isFormalitySupported);
     }
 
     #[Test]
@@ -84,6 +74,6 @@ class HasFormalitySupportTest extends AbstractDeepLTestCase
             ],
         ], $evaluateDisplayConditionsMock);
 
-        static::assertFalse($isFormalitySupported);
+        $this->assertFalse($isFormalitySupported);
     }
 }

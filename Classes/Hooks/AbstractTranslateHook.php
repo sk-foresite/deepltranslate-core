@@ -4,40 +4,83 @@ declare(strict_types=1);
 
 namespace WebVision\Deepltranslate\Core\Hooks;
 
+use Symfony\Contracts\Service\Attribute\Required;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Messaging\FlashMessage;
 use TYPO3\CMS\Core\Messaging\FlashMessageService;
 use TYPO3\CMS\Core\Site\Entity\Site;
+use TYPO3\CMS\Core\SysLog\Action\Database as SystemLogDatabaseAction;
+use TYPO3\CMS\Core\SysLog\Error as SystemLogErrorClassification;
 use TYPO3\CMS\Core\Type\ContextualFeedbackSeverity;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use WebVision\Deepltranslate\Core\Domain\Dto\InlineParentReference;
 use WebVision\Deepltranslate\Core\Domain\Dto\TranslateContext;
+use WebVision\Deepltranslate\Core\Domain\Enum\InlineParentState;
 use WebVision\Deepltranslate\Core\Domain\Repository\PageRepository;
 use WebVision\Deepltranslate\Core\Exception\LanguageIsoCodeNotFoundException;
 use WebVision\Deepltranslate\Core\Exception\LanguageRecordNotFoundException;
 use WebVision\Deepltranslate\Core\Service\DeeplService;
+use WebVision\Deepltranslate\Core\Service\InlineRelationResolver;
 use WebVision\Deepltranslate\Core\Service\LanguageService;
 use WebVision\Deepltranslate\Core\Service\ProcessingInstruction;
+use WebVision\Deepltranslate\Core\Service\RecordLocalizationResolverInterface;
 
 abstract class AbstractTranslateHook
 {
-    protected DeeplService $deeplService;
+    /** @phpstan-ignore property.uninitializedReadonly */
+    protected readonly DeeplService $deeplService;
+    /** @phpstan-ignore property.uninitializedReadonly */
+    protected readonly PageRepository $pageRepository;
+    /** @phpstan-ignore property.uninitializedReadonly */
+    protected readonly LanguageService $languageService;
+    /** @phpstan-ignore property.uninitializedReadonly */
+    protected readonly ProcessingInstruction $processingInstruction;
+    /** @phpstan-ignore property.uninitializedReadonly */
+    protected readonly InlineRelationResolver $inlineRelationResolver;
+    /** @phpstan-ignore property.uninitializedReadonly */
+    protected readonly RecordLocalizationResolverInterface $recordLocalizationResolver;
 
-    protected PageRepository $pageRepository;
+    #[Required]
+    final public function injectInlineRelationResolver(InlineRelationResolver $inlineRelationResolver): void
+    {
+        /** @phpstan-ignore property.readOnlyAssignNotInConstructor */
+        $this->inlineRelationResolver = $inlineRelationResolver;
+    }
 
-    protected LanguageService $languageService;
-    protected ProcessingInstruction $processingInstruction;
+    #[Required]
+    final public function injectRecordLocalizationResolver(RecordLocalizationResolverInterface $recordLocalizationResolver): void
+    {
+        /** @phpstan-ignore property.readOnlyAssignNotInConstructor */
+        $this->recordLocalizationResolver = $recordLocalizationResolver;
+    }
 
-    public function __construct(
-        PageRepository $pageRepository,
-        DeeplService $deeplService,
-        LanguageService $languageService,
-        ProcessingInstruction $processingInstruction
-    ) {
-        $this->deeplService = $deeplService;
+    #[Required]
+    final public function injectPageRepository(PageRepository $pageRepository): void
+    {
+        /** @phpstan-ignore property.readOnlyAssignNotInConstructor */
         $this->pageRepository = $pageRepository;
+    }
+
+    #[Required]
+    final public function injectDeeplService(DeeplService $deeplService): void
+    {
+        /** @phpstan-ignore property.readOnlyAssignNotInConstructor */
+        $this->deeplService = $deeplService;
+    }
+
+    #[Required]
+    final public function injectLanguageService(LanguageService $languageService): void
+    {
+        /** @phpstan-ignore property.readOnlyAssignNotInConstructor */
         $this->languageService = $languageService;
+    }
+
+    #[Required]
+    final public function injectProcessingInstruction(ProcessingInstruction $processingInstruction): void
+    {
+        /** @phpstan-ignore property.readOnlyAssignNotInConstructor */
         $this->processingInstruction = $processingInstruction;
     }
 
@@ -132,7 +175,7 @@ abstract class AbstractTranslateHook
                 return 0;
             }
         }
-        return match($tableName) {
+        return match ($tableName) {
             'pages' => (int)($currentRecord['uid'] ?? 0),
             default => (int)($currentRecord['pid'] ?? 0),
         };
@@ -169,6 +212,30 @@ abstract class AbstractTranslateHook
         }
         $this->processingInstruction->setProcessingInstruction($table, $id, true);
 
+        // Inline (IRRE) children in connected mode must not be localized on their own: `DataHandler::localize()`
+        // does not write the `foreign_field` pointer to the translated parent, which would create a translation
+        // not attached to anything. Hand these over to the DataHandler command dealing with inline children.
+        //
+        // A record whose table is used for inline children but which is not one itself - most prominently a
+        // `tt_content` element placed directly on a page - resolves to `NotInlineChild` and is localized
+        // normally below. A broken relation configuration (`Ambiguous`, `ParentMissing`) is skipped and
+        // reported to the editor instead of silently producing a mis-attached translation.
+        // @see https://github.com/web-vision/deepltranslate-core/issues/503
+        $inlineParentResolution = $this->inlineRelationResolver->resolveParentReference($table, (int)$id);
+        $inlineParentReference = $inlineParentResolution->reference;
+        if ($inlineParentReference !== null) {
+            $this->localizeInlineChildRecord($inlineParentReference, (int)$value, $dataHandler);
+            $commandIsProcessed = true;
+            return;
+        }
+        if ($inlineParentResolution->state === InlineParentState::Ambiguous
+            || $inlineParentResolution->state === InlineParentState::ParentMissing
+        ) {
+            $this->logBrokenInlineRelation($inlineParentResolution->state, $table, (int)$id, $dataHandler);
+            $commandIsProcessed = true;
+            return;
+        }
+
         // Following lines are copied from `DataHandler::process_cmdmap()` from 'localize' command switch. Property
         // is protected and the reason we need to use PHP powerfull reflection API to set the wanted value.
         $dataHandlerPropertyReflection = (new \ReflectionProperty($dataHandler, 'useTransOrigPointerField'));
@@ -178,5 +245,136 @@ abstract class AbstractTranslateHook
         $dataHandlerPropertyReflection->setValue($dataHandler, $backupUseTransOrigPointerField);
 
         $commandIsProcessed = true;
+    }
+
+    /**
+     * Localizes an inline child record through its parent record, so TYPO3 writes the `foreign_field`
+     * pointer, the `pid` and the sorting of the created translation.
+     *
+     * Without a translated parent record the child translation cannot be attached to anything. In that
+     * case nothing is created at all, mirroring `DataHandler::inlineLocalizeSynchronize()`, which refuses
+     * to work on a parent record without localization, too.
+     */
+    private function localizeInlineChildRecord(
+        InlineParentReference $reference,
+        int $languageId,
+        DataHandler $dataHandler
+    ): void {
+        // Note: the underlying TYPO3 lookup matches `ctrl.translationSource` (`l10n_source`) and only
+        // falls back to `ctrl.transOrigPointerField` (`l10n_parent`) for tables without a translation
+        // source field, so a translation with an empty `l10n_source` - created by TYPO3 itself, for
+        // example through a plain DataHandler datamap - is not found. An existing parent translation
+        // is then missed and the child translation is skipped.
+        //
+        // The behaviour cannot be repaired from within the extension: `DataHandler::inlineLocalizeSynchronize()`,
+        // which the localization is handed over to below, resolves the parent localization with the
+        // same lookup, and further DataHandler code paths do so as well. Only the upstream fix helps:
+        //
+        // - https://forge.typo3.org/issues/110281
+        // - main: https://review.typo3.org/c/Packages/TYPO3.CMS/+/94914
+        // - 14.3: https://review.typo3.org/c/Packages/TYPO3.CMS/+/94916
+        // - 13.4: https://review.typo3.org/c/Packages/TYPO3.CMS/+/94915
+        //
+        // @todo Raise the minimum TYPO3 core version constraint to the releases containing the fix
+        //       above, once they are merged and released, and drop this note.
+        $parentHasTranslation = $this->recordLocalizationResolver->hasTranslation(
+            $reference->parentTable,
+            $reference->parentUid,
+            $languageId
+        );
+        if ($parentHasTranslation === false) {
+            $message = 'DeepL translation of inline child record "{table}:{uid}" has been skipped, because parent'
+                . ' record "{parentTable}:{parentUid}" has no translation for language "{language}" yet. Translate'
+                . ' the parent record first.';
+            $messageData = [
+                'table' => $reference->childTable,
+                'uid' => $reference->childUid,
+                'parentTable' => $reference->parentTable,
+                'parentUid' => $reference->parentUid,
+                'language' => $languageId,
+            ];
+            $dataHandler->log(
+                $reference->childTable,
+                $reference->childUid,
+                SystemLogDatabaseAction::LOCALIZE,
+                null,
+                SystemLogErrorClassification::MESSAGE,
+                $message,
+                null,
+                $messageData
+            );
+            $this->flashMessages(
+                str_replace(
+                    array_map(static fn(string $key): string => '{' . $key . '}', array_keys($messageData)),
+                    array_map(strval(...), array_values($messageData)),
+                    $message
+                ),
+                '',
+                ContextualFeedbackSeverity::WARNING
+            );
+            return;
+        }
+
+        $inlineDataHandler = GeneralUtility::makeInstance(DataHandler::class);
+        $inlineDataHandler->start([], [
+            $reference->parentTable => [
+                $reference->parentUid => [
+                    'inlineLocalizeSynchronize' => [
+                        'field' => $reference->parentField,
+                        'language' => $languageId,
+                        'action' => 'localize',
+                        'ids' => [$reference->childUid],
+                    ],
+                ],
+            ],
+        ]);
+        $inlineDataHandler->process_cmdmap();
+        $dataHandler->errorLog = array_merge($dataHandler->errorLog, $inlineDataHandler->errorLog);
+    }
+
+    /**
+     * Reports a record whose inline relation could not be resolved reliably - an ambiguous relation
+     * configuration or a missing parent record. Such a record is skipped instead of being localized
+     * on its own, which would attach the translation to the wrong parent or to nothing at all. A
+     * broken TCA or broken data is the likely cause, so the editor is informed.
+     */
+    private function logBrokenInlineRelation(
+        InlineParentState $state,
+        string $table,
+        int $uid,
+        DataHandler $dataHandler
+    ): void {
+        $message = match ($state) {
+            InlineParentState::Ambiguous => 'DeepL translation of record "{table}:{uid}" has been skipped, because it'
+                . ' matches more than one inline parent relation and cannot be attached reliably. Check the inline'
+                . ' relation configuration (TCA) of this table.',
+            InlineParentState::ParentMissing => 'DeepL translation of inline child record "{table}:{uid}" has been'
+                . ' skipped, because the parent record it points to does not exist. Check the record\'s inline'
+                . ' relation.',
+            default => 'DeepL translation of record "{table}:{uid}" has been skipped.',
+        };
+        $messageData = [
+            'table' => $table,
+            'uid' => $uid,
+        ];
+        $dataHandler->log(
+            $table,
+            $uid,
+            SystemLogDatabaseAction::LOCALIZE,
+            null,
+            SystemLogErrorClassification::MESSAGE,
+            $message,
+            null,
+            $messageData
+        );
+        $this->flashMessages(
+            str_replace(
+                array_map(static fn(string $key): string => '{' . $key . '}', array_keys($messageData)),
+                array_map(strval(...), array_values($messageData)),
+                $message
+            ),
+            '',
+            ContextualFeedbackSeverity::WARNING
+        );
     }
 }

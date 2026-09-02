@@ -5,19 +5,54 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
 use TYPO3\CMS\Backend\View\BackendViewFactory;
+use TYPO3\CMS\Core\Core\Environment;
+use TYPO3\CMS\Core\DependencyInjection\PublicServicePass;
+use TYPO3\CMS\Core\Information\Typo3Version;
 use TYPO3\CMS\Dashboard\WidgetRegistry;
 use WebVision\Deepltranslate\Core\Service\UsageService;
+use WebVision\Deepltranslate\Core\TranslatorInterface;
+use WebVision\Deepltranslate\Core\UsageInterface;
 use WebVision\Deepltranslate\Core\Widgets\UsageWidget;
 
 return function (ContainerConfigurator $containerConfigurator, ContainerBuilder $containerBuilder) {
-    $services = $containerConfigurator
-        ->services();
+    $typo3Version = new Typo3Version();
+    $majorVersion = $typo3Version->getMajorVersion();
+    $services = $containerConfigurator->services();
+
+    //==================================================================================================================
+    // The default configuration: allow autowire and autoconfigure,
+    // no need to make every class public.
+    //==================================================================================================================
+    $services->defaults()
+        ->autowire()
+        ->autoconfigure()
+        ->private(); // "private" is the default and can safely be omitted
+    //==================================================================================================================
+
+    //==================================================================================================================
+    // Define the location of the PHP sources of our extension.
+    // In addition, exclude Extbase models that should never be used via DI.
+    //==================================================================================================================
+    $services->load(
+        sprintf('WebVision\\Deepltranslate\\Core\\Core%s\\', $majorVersion),
+        sprintf(__DIR__ . '/../Core%s/', $majorVersion),
+    );
+    //==================================================================================================================
+
+    // mb_strtolower((string)getenv('TYPO3_CONTEXT')) === 'testing'
+    if (Environment::getContext()->isTesting()) {
+        $services->load(
+            'WebVision\\Deepltranslate\\Core\\Testing\\',
+            __DIR__ . '/../TestClasses/',
+        );
+    }
 
     /**
      * Check if WidgetRegistry is defined, which means that EXT:dashboard is available.
      * Registration directly in Services.yaml will break without EXT:dashboard installed!
      */
     if ($containerBuilder->hasDefinition(WidgetRegistry::class)) {
+        // @todo Needs to be checked and verified for TYPO3 v14 if adoptions are required.
         $services->set('widgets.deepltranslate.widget.useswidget')
             ->class(UsageWidget::class)
             ->arg('$backendViewFactory', new Reference(BackendViewFactory::class))
@@ -33,4 +68,12 @@ return function (ContainerConfigurator $containerConfigurator, ContainerBuilder 
                 'width' => 'small',
             ]);
     }
+
+    // Make all `UsageInterface::class` implementation public: true
+    $containerBuilder->registerForAutoconfiguration(UsageInterface::class)->addTag(UsageInterface::class);
+    $containerBuilder->addCompilerPass(new PublicServicePass(UsageInterface::class));
+
+    // Make all `TranslatorInterface::class` implementation public: true
+    $containerBuilder->registerForAutoconfiguration(TranslatorInterface::class)->addTag(TranslatorInterface::class);
+    $containerBuilder->addCompilerPass(new PublicServicePass(TranslatorInterface::class));
 };

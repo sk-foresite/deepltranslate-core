@@ -17,13 +17,9 @@ use WebVision\Deepltranslate\Core\Exception\LanguageRecordNotFoundException;
 #[Autoconfigure(public: true)]
 final class LanguageService
 {
-    protected DeeplService $deeplService;
-
     public function __construct(
-        DeeplService $deeplService
-    ) {
-        $this->deeplService = $deeplService;
-    }
+        private DeeplService $deeplService,
+    ) {}
 
     /**
      * @return array{uid: int, title: string, language_isocode: string, languageCode: string}

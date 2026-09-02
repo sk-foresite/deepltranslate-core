@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace WebVision\Deepltranslate\Core\Tests\Functional\Regression;
 
+use PHPUnit\Framework\Attributes\Test;
 use SBUERK\TYPO3\Testing\SiteHandling\SiteBasedTestTrait;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
@@ -13,16 +14,6 @@ use WebVision\Deepltranslate\Core\Tests\Functional\AbstractDeepLTestCase;
 final class LocalizationInlineRegressionTest extends AbstractDeepLTestCase
 {
     use SiteBasedTestTrait;
-
-    /**
-     * @var non-empty-string[]
-     */
-    protected array $testExtensionsToLoad = [
-        'web-vision/deepl-base',
-        'web-vision/deeplcom-deepl-php',
-        'web-vision/deepltranslate-core',
-        __DIR__ . '/../Fixtures/Extensions/test_services_override',
-    ];
 
     protected const LANGUAGE_PRESETS = [
         'EN' => [
@@ -49,14 +40,6 @@ final class LocalizationInlineRegressionTest extends AbstractDeepLTestCase
                 'deeplTargetLanguage' => 'DE',
                 'deeplAllowedAutoTranslate' => true,
                 'deeplAllowedReTranslate' => true,
-            ],
-        ],
-    ];
-
-    protected array $configurationToUseInTestInstance = [
-        'EXTENSIONS' => [
-            'deepltranslate_core' => [
-                'apiKey' => 'mock_server',
             ],
         ],
     ];
@@ -90,7 +73,7 @@ final class LocalizationInlineRegressionTest extends AbstractDeepLTestCase
             ->createFromUserPreferences($GLOBALS['BE_USER']);
     }
 
-    /** @test */
+    #[Test]
     public function ensureInlineElementsTranslationOnLocalization(): void
     {
         $commandMap = [
@@ -104,7 +87,7 @@ final class LocalizationInlineRegressionTest extends AbstractDeepLTestCase
         $dataHandler->start([], $commandMap);
         $dataHandler->process_cmdmap();
 
-        static::assertEmpty($dataHandler->errorLog);
+        $this->assertEmpty($dataHandler->errorLog);
         self::assertCSVDataSet(__DIR__ . '/Fixtures/Results/pageWithMediaResult.csv');
     }
 }

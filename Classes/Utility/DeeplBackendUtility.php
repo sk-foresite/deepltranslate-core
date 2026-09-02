@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace WebVision\Deepltranslate\Core\Utility;
 
+use TYPO3\CMS\Backend\RecordList\DatabaseRecordList;
 use TYPO3\CMS\Backend\Routing\Exception\RouteNotFoundException;
 use TYPO3\CMS\Backend\Routing\UriBuilder;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Exception\SiteNotFoundException;
-use TYPO3\CMS\Core\Imaging\Icon;
 use TYPO3\CMS\Core\Imaging\IconFactory;
+use TYPO3\CMS\Core\Imaging\IconSize;
+use TYPO3\CMS\Core\Information\Typo3Version;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\MathUtility;
@@ -33,7 +35,7 @@ final class DeeplBackendUtility
 
     private static bool $configurationLoaded = false;
 
-    protected static ?CurrentPage $currentPage = null;
+    private static ?CurrentPage $currentPage = null;
 
     /**
      * @return string
@@ -64,7 +66,7 @@ final class DeeplBackendUtility
     }
 
     /**
-     * ToDo: Migrated function to own class object "WebVision\Deepltranslate\Core\Form\TranslationButtonGenerator"
+     * @todo    Remove when TYPO3 v13 support is dropped together with {@see DatabaseRecordList}.
      */
     public static function buildTranslateButton(
         $table,
@@ -99,21 +101,19 @@ final class DeeplBackendUtility
         if ($flagIcon) {
             $iconOverlayGenerator = GeneralUtility::makeInstance(IconOverlayGenerator::class);
             $icon = $iconOverlayGenerator->get($flagIcon);
-            $lC = $icon->render();
+            $localizeIconMarkup = $icon->render();
         } else {
-            $lC = GeneralUtility::makeInstance(
-                IconFactory::class
-            )
+            $localizeIconMarkup = GeneralUtility::makeInstance(IconFactory::class)
                 ->getIcon(
-                    'actions-localize-deepl',
-                    Icon::SIZE_SMALL
+                    sprintf('actions-localize-deepl-%s', ((new Typo3Version())->getMajorVersion())),
+                    IconSize::SMALL,
                 )->render();
         }
 
         return '<a href="' . htmlspecialchars($href) . '"'
             . '" class="btn btn-default t3js-action-localize"'
             . ' title="' . $title . '">'
-            . $lC . '</a> ';
+            . $localizeIconMarkup . '</a> ';
     }
 
     /**
@@ -125,14 +125,17 @@ final class DeeplBackendUtility
         return (string)$uriBuilder->buildUriFromRoute($route, $parameters);
     }
 
-    public static function checkCanBeTranslated(int $pageId, int $languageId): bool
+    public static function checkCanBeTranslated(int $pageId, int $targetLanguageId, int $sourceLanguageId = 0): bool
     {
+        if ($targetLanguageId === 0) {
+            return false;
+        }
         try {
             /** @var LanguageService $languageService */
             $languageService = GeneralUtility::makeInstance(LanguageService::class);
             $site = GeneralUtility::makeInstance(SiteFinder::class)->getSiteByPageId($pageId);
-            $languageService->getSourceLanguage($site);
-            $languageService->getTargetLanguage($site, $languageId);
+            $languageService->getSourceLanguage($site, $sourceLanguageId);
+            $languageService->getTargetLanguage($site, $targetLanguageId);
         } catch (LanguageRecordNotFoundException|SiteNotFoundException|InvalidArgumentException) {
             return false;
         }

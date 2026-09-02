@@ -19,10 +19,6 @@ final class UsageServiceTest extends AbstractDeepLTestCase
 
     protected function setUp(): void
     {
-        $this->configurationToUseInTestInstance = array_merge(
-            $this->configurationToUseInTestInstance,
-            require __DIR__ . '/../Fixtures/ExtensionConfig.php'
-        );
 
         parent::setUp();
 
@@ -36,7 +32,7 @@ final class UsageServiceTest extends AbstractDeepLTestCase
     {
         $usageService = $this->get(UsageService::class);
 
-        static::assertInstanceOf(UsageService::class, $usageService);
+        $this->assertInstanceOf(UsageService::class, $usageService);
     }
 
     #[Test]
@@ -47,7 +43,7 @@ final class UsageServiceTest extends AbstractDeepLTestCase
 
         $usage = $usageService->getCurrentUsage();
 
-        static::assertInstanceOf(Usage::class, $usage);
+        $this->assertInstanceOf(Usage::class, $usage);
     }
 
     #[Test]
@@ -56,7 +52,7 @@ final class UsageServiceTest extends AbstractDeepLTestCase
         /** @var UsageService $usageService */
         $usageService = $this->get(UsageService::class);
 
-        static::assertFalse($usageService->checkTranslateLimitWillBeExceeded(''));
+        $this->assertFalse($usageService->checkTranslateLimitWillBeExceeded(''));
     }
 
     #[Test]
@@ -78,7 +74,7 @@ final class UsageServiceTest extends AbstractDeepLTestCase
         );
 
         $isLimitExceeded = $usageService->checkTranslateLimitWillBeExceeded($translateContent);
-        static::assertTrue($isLimitExceeded);
+        $this->assertTrue($isLimitExceeded);
     }
 
     #[Test]
@@ -100,10 +96,10 @@ final class UsageServiceTest extends AbstractDeepLTestCase
         );
 
         $usage = $usageService->getCurrentUsage();
-        static::assertInstanceOf(Usage::class, $usage);
+        $this->assertInstanceOf(Usage::class, $usage);
         $character = $usage->character;
-        static::assertInstanceOf(UsageDetail::class, $character);
-        static::assertEquals(strlen($translateContent), $character->count);
+        $this->assertInstanceOf(UsageDetail::class, $character);
+        $this->assertEquals(strlen($translateContent), $character->count);
     }
 
     public static function numberFormatterLocalesDataProvider(): \Generator
@@ -138,6 +134,6 @@ final class UsageServiceTest extends AbstractDeepLTestCase
         $usageService = $this->get(UsageService::class);
 
         $formatted = $usageService->formatNumber($number);
-        static::assertEquals($expectedFormat, $formatted);
+        $this->assertEquals($expectedFormat, $formatted);
     }
 }

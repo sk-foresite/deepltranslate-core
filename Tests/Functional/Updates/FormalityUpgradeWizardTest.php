@@ -67,7 +67,6 @@ final class FormalityUpgradeWizardTest extends AbstractDeepLTestCase
     {
         $this->configurationToUseInTestInstance = array_merge(
             $this->configurationToUseInTestInstance,
-            require __DIR__ . '/../Fixtures/ExtensionConfig.php',
             [
                 'EXTENSIONS' => [
                     'deepltranslate_core' => [
@@ -99,25 +98,25 @@ final class FormalityUpgradeWizardTest extends AbstractDeepLTestCase
         $wizard = GeneralUtility::makeInstance(FormalityUpgradeWizard::class);
 
         $outputMock = $this->createMock(OutputInterface::class);
-        $outputMock->expects(static::any())
+        $outputMock->expects($this->any())
             ->method('writeln');
 
         $wizard->setOutput($outputMock);
 
         $executeUpdate = $wizard->executeUpdate();
 
-        static::assertTrue($executeUpdate, 'Upgrade process was failed');
+        $this->assertTrue($executeUpdate, 'Upgrade process was failed');
 
         $siteConfiguration = GeneralUtility::makeInstance(SiteConfiguration::class);
         $loadedSiteConfiguration = $siteConfiguration->load('acme');
 
-        static::assertArrayHasKey('languages', $loadedSiteConfiguration);
+        $this->assertArrayHasKey('languages', $loadedSiteConfiguration);
 
-        static::assertArrayHasKey('deeplTargetLanguage', $loadedSiteConfiguration['languages'][1]);
-        static::assertArrayNotHasKey('deeplFormality', $loadedSiteConfiguration['languages'][1], 'EN become formality support');
+        $this->assertArrayHasKey('deeplTargetLanguage', $loadedSiteConfiguration['languages'][1]);
+        $this->assertArrayNotHasKey('deeplFormality', $loadedSiteConfiguration['languages'][1], 'EN become formality support');
 
-        static::assertArrayHasKey('deeplTargetLanguage', $loadedSiteConfiguration['languages'][2]);
-        static::assertArrayHasKey('deeplFormality', $loadedSiteConfiguration['languages'][2], 'DE became not "deeplFormality"');
-        static::assertEquals('default', $loadedSiteConfiguration['languages'][2]['deeplFormality'], 'DE became not formality support');
+        $this->assertArrayHasKey('deeplTargetLanguage', $loadedSiteConfiguration['languages'][2]);
+        $this->assertArrayHasKey('deeplFormality', $loadedSiteConfiguration['languages'][2], 'DE became not "deeplFormality"');
+        $this->assertEquals('default', $loadedSiteConfiguration['languages'][2]['deeplFormality'], 'DE became not formality support');
     }
 }

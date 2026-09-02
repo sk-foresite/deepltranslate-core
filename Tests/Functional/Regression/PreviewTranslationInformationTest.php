@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace WebVision\Deepltranslate\Core\Tests\Functional\Regression;
 
+use PHPUnit\Framework\Attributes\Test;
 use SBUERK\TYPO3\Testing\SiteHandling\SiteBasedTestTrait;
 use TYPO3\CMS\Core\Localization\LanguageServiceFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -99,9 +100,7 @@ final class PreviewTranslationInformationTest extends AbstractDeepLTestCase
             ->createFromUserPreferences($GLOBALS['BE_USER']);
     }
 
-    /**
-     * @test
-     */
+    #[Test]
     public function previewTranslationInformationIsRenderedForTranslatedPage(): void
     {
         $styles = [];
@@ -125,10 +124,10 @@ final class PreviewTranslationInformationTest extends AbstractDeepLTestCase
         $requestContext = (new InternalRequestContext())->withBackendUserId(1);
         $request = new InternalRequest('https://acme.com/de/artikel/');
         $response = $this->executeFrontendSubRequest($request, $requestContext);
-        static::assertSame(200, $response->getStatusCode());
+        $this->assertSame(200, $response->getStatusCode());
 
         $content = (string)$response->getBody();
-        static::assertNotEmpty($content);
-        static::assertStringContainsString($expectedContent, $content, 'preview translation label is rendered in frontend preview');
+        $this->assertNotEmpty($content);
+        $this->assertStringContainsString($expectedContent, $content, 'preview translation label is rendered in frontend preview');
     }
 }

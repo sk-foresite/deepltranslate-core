@@ -6,9 +6,9 @@ namespace WebVision\Deepltranslate\Core\Controller\Backend;
 
 use Psr\Http\Message\ServerRequestInterface;
 
-use TYPO3\CMS\Backend\Attribute\Controller;
+use TYPO3\CMS\Backend\Attribute\AsController;
 use TYPO3\CMS\Core\Http\JsonResponse;
-use WebVision\Deepltranslate\Core\Configuration;
+use WebVision\Deepltranslate\Core\ConfigurationInterface;
 
 /**
  * Controller for fetching the DeepL settings via Ajax route for usage in JavaScript inside the backend
@@ -17,16 +17,12 @@ use WebVision\Deepltranslate\Core\Configuration;
  *
  * @internal No public API
  */
-#[Controller]
-final class AjaxController
+#[AsController]
+final readonly class AjaxController
 {
-    private Configuration $configuration;
-
     public function __construct(
-        Configuration $configuration
-    ) {
-        $this->configuration = $configuration;
-    }
+        private ConfigurationInterface $configuration,
+    ) {}
 
     /**
      * check deepl Settings (url,apikey).
@@ -41,7 +37,6 @@ final class AjaxController
             $configurationStatus['status'] = false;
             $configurationStatus['message'] = 'Deepl settings not enabled';
         }
-
         return new JsonResponse($configurationStatus);
     }
 }

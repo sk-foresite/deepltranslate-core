@@ -10,10 +10,13 @@ fi
 waitFor() {
     local HOST=${1}
     local PORT=${2}
+    # 60 rather than 10 seconds: mysql:8.0 needs 12-13s under docker to
+    # initialise a fresh data directory, about twice as long as under podman,
+    # so an 11 second budget aborted the functional mysql suites at random.
     local TESTCOMMAND="
         COUNT=0;
         while ! nc -z ${HOST} ${PORT}; do
-            if [ \"\${COUNT}\" -gt 10 ]; then
+            if [ \"\${COUNT}\" -gt 60 ]; then
               echo \"Can not connect to ${HOST} port ${PORT}. Aborting.\";
               exit 1;
             fi;
@@ -21,9 +24,13 @@ waitFor() {
             COUNT=\$((COUNT + 1));
         done;
     "
-    ${CONTAINER_BIN} run ${CONTAINER_COMMON_PARAMS} --name wait-for-${SUFFIX} ${XDEBUG_MODE} -e XDEBUG_CONFIG="${XDEBUG_CONFIG}" ${IMAGE_ALPINE} /bin/sh -c "${TESTCOMMAND}"
+    ${CONTAINER_BIN} run ${CONTAINER_COMMON_PARAMS} --name wait-for-${SUFFIX} ${XDEBUG_MODE} -e XDEBUG_CONFIG="${XDEBUG_CONFIG}" ${IMAGE_PHP} /bin/sh -c "${TESTCOMMAND}"
     if [[ $? -gt 0 ]]; then
-        kill -SIGINT -$$
+        # Not "kill -SIGINT -$$": the SIGINT trap is only installed when CI is
+        # not "true", so in CI the signal was a no-op, the run continued and the
+        # test suite connected to a database that was not listening.
+        cleanUp
+        exit 1
     fi
 }
 
@@ -47,7 +54,7 @@ handleDbmsOptions() {
                 exit 1
             fi
             [ -z "${DBMS_VERSION}" ] && DBMS_VERSION="10.4"
-            if ! [[ ${DBMS_VERSION} =~ ^(10.4|10.5|10.6|10.7|10.8|10.9|10.10|10.11|11.0|11.1)$ ]]; then
+            if ! [[ ${DBMS_VERSION} =~ ^(10.4|10.5|10.6|10.7|10.8|10.9|10.10|10.11|11.0|11.1|11.2|11.4)$ ]]; then
                 echo "Invalid combination -d ${DBMS} -i ${DBMS_VERSION}" >&2
                 echo >&2
                 echo "Use \".Build/Scripts/runTests.sh -h\" to display help and valid options" >&2
@@ -161,6 +168,7 @@ Options:
             - phpstan: phpstan analyze
             - phpstanGenerateBaseline: regenerate phpstan baseline, handy after phpstan updates
             - unit: PHP unit tests
+            - unitRandom: PHP unit tests in randomized order
 
     -b <docker|podman>
         Container environment:
@@ -199,7 +207,10 @@ Options:
             - 10.10  short-term, maintained until 2023-11
             - 10.11  long-term, maintained until 2028-02
             - 11.0   development series
-            - 11.1   short-term development series
+            - 11.1   short-term development series, maintained until 2024-08
+            - 11.2   short-term development series, maintained until 2024-11
+            - 11.3   short-term development series, rolling release
+            - 11.4   long-term, maintained until 2029-05
         With "-d mysql":
             - 8.0   maintained until 2026-04 (default)
             - 8.1   unmaintained since 2023-10
@@ -215,18 +226,18 @@ Options:
             - 15    maintained until 2027-11-11
             - 16    maintained until 2028-11-09
 
-    -t <12|13>
+    -t <13|14>
         Only with -s composerInstall|composerInstallMin|composerInstallMax
         Specifies the TYPO3 CORE Version to be used
-            - 12: (default) use TYPO3 v12
-            - 12: use TYPO3 v13
+            - 13: (default) use TYPO3 v13
+            - 14: use TYPO3 v14
 
-    -p <8.1|8.2|8.3|8.4>
+    -p <8.2|8.3|8.4|8.5>
         Specifies the PHP minor version to be used
-            - 8.1: use PHP 8.1
             - 8.2: (default) use PHP 8.2
             - 8.3: use PHP 8.3
             - 8.4: use PHP 8.4
+            - 8.5: use PHP 8.5
 
     -x
         Only with -s functional|functionalDeprecated|unit|unitDeprecated|unitRandom|acceptance|acceptanceInstall
@@ -257,15 +268,15 @@ Options:
         Show this help.
 
 Examples:
-    # Run all core unit tests using PHP 8.1
+    # Run all core unit tests using PHP 8.2
     ./Build/Scripts/runTests.sh
     ./Build/Scripts/runTests.sh -s unit
 
     # Run all core units tests and enable xdebug (have a PhpStorm listening on port 9003!)
     ./Build/Scripts/runTests.sh -x
 
-    # Run unit tests in phpunit verbose mode with xdebug on PHP 8.1 and filter for test canRetrieveValueWithGP
-    ./Build/Scripts/runTests.sh -x -p 8.1 -e "-v --filter canRetrieveValueWithGP"
+    # Run unit tests in phpunit verbose mode with xdebug on PHP 8.3 and filter for test canRetrieveValueWithGP
+    ./Build/Scripts/runTests.sh -x -p 8.3 -e "-v --filter canRetrieveValueWithGP"
 
     # Run functional tests in phpunit with a filtered test method name in a specified file
     # example will currently execute two tests, both of which start with the search term
@@ -293,7 +304,7 @@ fi
 
 # Option defaults
 TEST_SUITE="unit"
-CORE_VERSION="12"
+CORE_VERSION="13"
 DBMS="sqlite"
 PHP_VERSION="8.2"
 PHP_XDEBUG_ON=0
@@ -333,13 +344,13 @@ while getopts "a:b:s:d:i:p:t:xy:o:nhu" OPT; do
             ;;
         p)
             PHP_VERSION=${OPTARG}
-            if ! [[ ${PHP_VERSION} =~ ^(8.1|8.2|8.3|8.4)$ ]]; then
+            if ! [[ ${PHP_VERSION} =~ ^(8.2|8.3|8.4|8.5)$ ]]; then
                 INVALID_OPTIONS+=("p ${OPTARG}")
             fi
             ;;
         t)
             CORE_VERSION=${OPTARG}
-            if ! [[ ${CORE_VERSION} =~ ^(12|13)$ ]]; then
+            if ! [[ ${CORE_VERSION} =~ ^(13|14)$ ]]; then
                 INVALID_OPTIONS+=("t ${OPTARG}")
             fi
             ;;
@@ -385,9 +396,13 @@ fi
 
 handleDbmsOptions
 
-COMPOSER_ROOT_VERSION="5.x.x-dev"
+COMPOSER_ROOT_VERSION="6.0.8-dev"
 CONTAINER_INTERACTIVE="-it --init"
 HOST_UID=$(id -u)
+HOST_GID=$(id -g)
+# Additional container parameters, provided by the environment. Empty unless the caller
+# exports it, which is how the portfolio harnesses inject CI specific flags.
+CI_PARAMS="${CI_PARAMS:-}"
 USERSET=""
 if [ $(uname) != "Darwin" ]; then
     USERSET="--user $HOST_UID"
@@ -423,9 +438,7 @@ if [[ -z "${CONTAINER_BIN}" ]]; then
 fi
 
 IMAGE_PHP="ghcr.io/typo3/core-testing-$(echo "php${PHP_VERSION}" | sed -e 's/\.//'):latest"
-IMAGE_ALPINE="docker.io/alpine:3.8"
-IMAGE_DOCS="ghcr.io/typo3-documentation/render-guides:latest"
-IMAGE_SELENIUM="docker.io/selenium/standalone-chrome:4.0.0-20211102"
+IMAGE_RSTRENDERING="ghcr.io/typo3-documentation/render-guides:latest"
 IMAGE_MARIADB="docker.io/mariadb:${DBMS_VERSION}"
 IMAGE_MYSQL="docker.io/mysql:${DBMS_VERSION}"
 IMAGE_POSTGRES="docker.io/postgres:${DBMS_VERSION}-alpine"
@@ -436,10 +449,6 @@ IMAGE_DEEPL="ghcr.io/web-vision/wv-deeplmockapi-server:latest"
 # In a perfect world selenium would have a arm64 integrated, but that is not on the horizon.
 # So for the time being we have to use seleniarm image.
 ARCH=$(uname -m)
-if [ ${ARCH} = "arm64" ]; then
-    IMAGE_SELENIUM="docker.io/seleniarm/standalone-chromium:4.1.2-20220227"
-fi
-echo "Architecture" ${ARCH} "requires" ${IMAGE_SELENIUM} "to run acceptance tests."
 
 # Set $1 to first mass argument, this is the optional test file or test directory to execute
 shift $((OPTIND - 1))
@@ -460,9 +469,25 @@ if [ "${CONTAINER_BIN}" == "docker" ]; then
     CONTAINER_COMMON_PARAMS="${CONTAINER_INTERACTIVE} --rm --network ${NETWORK} --add-host ${CONTAINER_HOST}:host-gateway ${USERSET} -v ${ROOT_DIR}:${ROOT_DIR} ${DEEPL_BASE_MOUNT} -w ${ROOT_DIR}"
     CONTAINER_SIMPLE_PARAMS="${CONTAINER_INTERACTIVE} --rm --network ${NETWORK} --add-host ${CONTAINER_HOST}:host-gateway ${USERSET} -v ${ROOT_DIR}:${ROOT_DIR} ${DEEPL_BASE_MOUNT} -w ${ROOT_DIR}"
     DOCUMENTATION_COMMON_PARAMS="${CONTAINER_INTERACTIVE} --rm ${USERSET} -v ${ROOT_DIR}:/project"
+    # docker creates a tmpfs owned by "root:root", inheriting the mode of its host
+    # mountpoint, while "${USERSET}" above passes a uid but no group and therefore runs
+    # the container as "uid=${HOST_UID} gid=0". At a CI umask of 0022 the mountpoint is
+    # 0755, so group 0 gets "r-x" and no test database can be created.
+    #
+    # "uid"/"gid" address that at the source: the mount is owned by the user the container
+    # runs as, whatever the umask of the host mountpoint. "mode=1777" is the workaround the
+    # docker adoption introduced instead, and is kept next to them - it is what has been
+    # proven on a GitHub hosted runner, and it costs nothing to leave in place.
+    #
+    # None of this reproduces at the 0002 umask of a typical workstation, where the
+    # mountpoint comes up 0775 and the group bit already grants access. Use "umask 0022".
+    TMPFS_MOUNT_OPTIONS="rw,noexec,nosuid,uid=${HOST_UID},gid=${HOST_GID},mode=1777"
 else
     # podman
     CONTAINER_HOST="host.containers.internal"
+    # Rootless podman maps the container root to the host user, so the tmpfs is writable
+    # without an explicit owner. "mode=1777" is kept for the rootful case.
+    TMPFS_MOUNT_OPTIONS="rw,noexec,nosuid,mode=1777"
     CONTAINER_COMMON_PARAMS="${CONTAINER_INTERACTIVE} ${CI_PARAMS} --rm --network ${NETWORK} -v ${ROOT_DIR}:${ROOT_DIR} ${DEEPL_BASE_MOUNT}  -w ${ROOT_DIR}"
     CONTAINER_SIMPLE_PARAMS="${CONTAINER_INTERACTIVE} ${CI_PARAMS} --rm -v ${ROOT_DIR}:${ROOT_DIR} ${DEEPL_BASE_MOUNT}  -w ${ROOT_DIR}"
     DOCUMENTATION_COMMON_PARAMS="${CONTAINER_INTERACTIVE} ${CI_PARAMS} --rm -v ${ROOT_DIR}:${ROOT_DIR} -v ${ROOT_DIR}:/project"
@@ -527,13 +552,21 @@ case ${TEST_SUITE} in
         SUITE_EXIT_CODE=$?
         ;;
     composerUpdate)
-        COMMAND=(Build/Scripts/composer-for-core-version.sh ${CORE_VERSION})
-        ${CONTAINER_BIN} run ${CONTAINER_SIMPLE_PARAMS} --name composer-command-${SUFFIX} -e COMPOSER_CACHE_DIR=.Build/.cache/composer -e COMPOSER_ROOT_VERSION=${COMPOSER_ROOT_VERSION} ${IMAGE_PHP} "${COMMAND[@]}"
+        # backup current composer.json
+        cp -Rf composer.json composer.json.orig
+        # The vendor tree must go, not just the lock file: Composer boots plugins from
+        # it before resolving, so a leftover tree from another "-t" runs the previous
+        # core's "typo3/class-alias-loader" over the newly installed one. ".Build/.cache"
+        # is kept so the reinstall is served from the local Composer cache.
+        rm -rf .Build/vendor .Build/bin composer.lock
+        ${CONTAINER_BIN} run ${CONTAINER_SIMPLE_PARAMS} --name composer-update-${CORE_VERSION}-${SUFFIX} -e COMPOSER_CACHE_DIR=.Build/.cache/composer -e COMPOSER_ROOT_VERSION=${COMPOSER_ROOT_VERSION} ${IMAGE_PHP} composer require --dev "typo3/minimal":"^${CORE_VERSION}"
         SUITE_EXIT_CODE=$?
+        # restore composer json
+        cp -Rf composer.json.orig composer.json
         ;;
     functional)
         PHPUNIT_CONFIG_FILE="Build/phpunit/FunctionalTests.xml"
-        COMMAND=(.Build/bin/phpunit -c ${PHPUNIT_CONFIG_FILE} --exclude-group not-${DBMS} "$@")
+        COMMAND=(.Build/bin/phpunit -c ${PHPUNIT_CONFIG_FILE} --exclude-group not-${DBMS} --exclude-group not-core-${CORE_VERSION} "$@")
         echo "Using deepl-mockserver"
         ${CONTAINER_BIN} run --rm ${CI_PARAMS} --name deepl-func-${SUFFIX} --network ${NETWORK} -d ${IMAGE_DEEPL} >/dev/null
         waitFor deepl-func-${SUFFIX} 3000
@@ -564,7 +597,11 @@ case ${TEST_SUITE} in
             sqlite)
                 # create sqlite tmpfs mount typo3temp/var/tests/functional-sqlite-dbs/ to avoid permission issues
                 mkdir -p "${ROOT_DIR}/.Build/Web/typo3temp/var/tests/functional-sqlite-dbs/"
-                CONTAINERPARAMS="-e typo3DatabaseDriver=pdo_sqlite --tmpfs ${ROOT_DIR}/.Build/Web/typo3temp/var/tests/functional-sqlite-dbs/:rw,noexec,nosuid -e DEEPL_API_KEY=mock_server -e DEEPL_HOST=deepl-func-${SUFFIX} -e DEEPL_PORT=3000 -e DEEPL_SERVER_URL=deepl-func-${SUFFIX}:3000 -e DEEPL_MOCK_SERVER_PORT=3000 -e DEEPL_SCHEME=http -e DEEPL_MOCKSERVER_USED=1"
+                # "${TMPFS_MOUNT_OPTIONS}" carries the owner and mode the mount needs, which
+                # differ per container binary - see where it is assigned. Without them the
+                # test databases cannot be created and every test fails with "unable to open
+                # database file".
+                CONTAINERPARAMS="-e typo3DatabaseDriver=pdo_sqlite --tmpfs ${ROOT_DIR}/.Build/Web/typo3temp/var/tests/functional-sqlite-dbs/:${TMPFS_MOUNT_OPTIONS} -e DEEPL_API_KEY=mock_server -e DEEPL_HOST=deepl-func-${SUFFIX} -e DEEPL_PORT=3000 -e DEEPL_SERVER_URL=deepl-func-${SUFFIX}:3000 -e DEEPL_MOCK_SERVER_PORT=3000 -e DEEPL_SCHEME=http -e DEEPL_MOCKSERVER_USED=1"
                 ${CONTAINER_BIN} run ${CONTAINER_COMMON_PARAMS} --name functional-${SUFFIX} ${XDEBUG_MODE} -e XDEBUG_CONFIG="${XDEBUG_CONFIG}" ${CONTAINERPARAMS} ${IMAGE_PHP} "${COMMAND[@]}"
                 SUITE_EXIT_CODE=$?
                 ;;
@@ -581,7 +618,8 @@ case ${TEST_SUITE} in
         SUITE_EXIT_CODE=$?
         ;;
     renderDocumentation)
-        ${CONTAINER_BIN} run ${CONTAINER_INTERACTIVE} --pull always -v ${ROOT_DIR}:/project -it ghcr.io/typo3-documentation/render-guides:latest --config=Documentation
+        # ${CONTAINER_BIN} run ${CONTAINER_COMMON_PARAMS} --name rendering-documentation-${SUFFIX} --pull always -w /project -v ${ROOT_DIR}:/project -it ${IMAGE_RSTRENDERING} --config=Documentation --fail-on-log --fail-on-error --no-progress --config=Documentation Documentation
+        ${CONTAINER_BIN} run ${DOCUMENTATION_COMMON_PARAMS} --name rendering-documentation-${SUFFIX} --pull always -w /project ${IMAGE_RSTRENDERING} --config=Documentation --fail-on-error --no-progress --config=Documentation Documentation
         SUITE_EXIT_CODE=$?
         ;;
     phpstan)
@@ -598,13 +636,13 @@ case ${TEST_SUITE} in
         ;;
     unit)
         PHPUNIT_CONFIG_FILE="Build/phpunit/UnitTests.xml"
-        COMMAND=(.Build/bin/phpunit -c ${PHPUNIT_CONFIG_FILE} "$@")
+        COMMAND=(.Build/bin/phpunit -c ${PHPUNIT_CONFIG_FILE} --exclude-group not-core-${CORE_VERSION} "$@")
         ${CONTAINER_BIN} run ${CONTAINER_COMMON_PARAMS} --name unit-${SUFFIX} ${XDEBUG_MODE} -e XDEBUG_CONFIG="${XDEBUG_CONFIG}" ${IMAGE_PHP} "${COMMAND[@]}"
         SUITE_EXIT_CODE=$?
         ;;
     unitRandom)
         PHPUNIT_CONFIG_FILE="Build/phpunit/UnitTests.xml"
-        COMMAND=(.Build/bin/phpunit -c ${PHPUNIT_CONFIG_FILE} --order-by=random ${PHPUNIT_RANDOM} "$@")
+        COMMAND=(.Build/bin/phpunit -c ${PHPUNIT_CONFIG_FILE} --exclude-group not-core-${CORE_VERSION} --order-by=random ${PHPUNIT_RANDOM} "$@")
         ${CONTAINER_BIN} run ${CONTAINER_COMMON_PARAMS} --name unit-random-${SUFFIX} ${XDEBUG_MODE} -e XDEBUG_CONFIG="${XDEBUG_CONFIG}" ${IMAGE_PHP} "${COMMAND[@]}"
         SUITE_EXIT_CODE=$?
         ;;

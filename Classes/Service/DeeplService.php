@@ -71,7 +71,11 @@ final class DeeplService
             }
         }
 
-        $content = preg_replace('/<\/a>(\s*)<a/i', '</a>$1<span translate="no" class="notranslate">|</span><a', $translateContext->getContent());
+        $content = preg_replace(
+            '/<\/a>(\s*)<a\b/i',
+            "</a>\n<a",
+            $translateContext->getContent(),
+        );
 
         try {
             $response = $this->client->translate(
@@ -101,7 +105,11 @@ final class DeeplService
             $content = $response->text;
         }
 
-        $content = preg_replace('/<span translate="no" class="notranslate"[^>]*>.*?<\/span>/i', '', $content);
+        $content = preg_replace(
+            '/<\/a>\s+<a\b/i',
+            '</a><a',
+            $content
+        );
 
         $content = preg_replace_callback('/(title|alt)="([^"]*)"/u', function ($match) use ($translateContext) {
             $attribute = $match[1];

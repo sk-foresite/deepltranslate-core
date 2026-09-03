@@ -72,8 +72,8 @@ final class DeeplService
         }
 
         $content = preg_replace(
-            '/<\/a>(\s*)<a\b/i',
-            "</a>\n<a",
+            '/<\/a><a\b/i',
+            "</a><br><a",
             $translateContext->getContent(),
         );
 
@@ -106,7 +106,7 @@ final class DeeplService
         }
 
         $content = preg_replace(
-            '/<\/a>\s+<a\b/i',
+            '/<\/a><br><a\b/i',
             '</a><a',
             $content
         );

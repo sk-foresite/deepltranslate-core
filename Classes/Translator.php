@@ -42,7 +42,7 @@ final class Translator extends AbstractClient implements TranslatorInterface
             // @todo Make this configurable, either as global setting or dependency injection (factory?) / event
             TranslateTextOptions::TAG_HANDLING => 'html',
             // @todo Make this configurable, either as global setting or dependency injection (factory?) / event
-            TranslateTextOptions::TAG_HANDLING_VERSION => 'v2',
+            TranslateTextOptions::TAG_HANDLING_VERSION => 'v1',
         ];
 
         if (!empty($glossary)) {
